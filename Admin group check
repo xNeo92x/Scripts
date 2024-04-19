@@ -1,0 +1,9 @@
+$loggedOnUserName = (Get-WmiObject -Class Win32_ComputerSystem).UserName
+$loggedOnUserObject = [RegEx]::Escape($loggedOnUserName)
+$OutputParameter = "Something went wrong..."
+if((net localgroup Administratoren) -match "$loggedOnUserObject") {
+  $OutputParameter = "$loggedOnUserName is a member of the local Administrators group"
+} else {
+  $OutputParameter = "$loggedOnUserName is not a member of the local Administrators group"
+}
+write-host "$OutputParameter"
