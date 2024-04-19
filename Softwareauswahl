@@ -1,0 +1,118 @@
+<#
+.Synopsis
+   Allows the installation of applications via chocolatey through a GUI.
+.DESCRIPTION
+   Allows the installation of applications via chocolatey through a GUI. Ensures first that chocolatey is available and that the correct PowerShell version is installed.
+   The list of applications is passed via a ConnectWise Automate script when the ps1 file is created.
+#>
+
+# Suppress progress bar output.
+$ProgressPreference = 'SilentlyContinue'
+
+# Ensure we force use of TLS 1.2 for all downloads.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# Check-function if Chocolatey is installed. If not, install.
+
+# Installation von NuGet
+Install-PackageProvider -Name NuGet  
+function Ensure-Chocolatey
+{
+    [CmdletBinding()]
+    param(
+        [string] $ChocoExePath
+    )
+
+    if (-not (Test-Path "$ChocoExePath"))
+    {
+        Set-ExecutionPolicy Bypass -Scope Process -Force; Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+        if ($LastExitCode -eq 3010)
+        {
+            Write-Host "Error: The recent changes indicate a reboot is necessary. Please reboot at your earliest convenience."
+        }
+    }
+}
+
+
+# Check Powershell version
+function Ensure-PowerShell
+{
+    [CmdletBinding()]
+    param(
+        [int] $Version
+    )
+
+    if ($PSVersionTable.PSVersion.Major -lt $Version)
+    {
+        Write-Host "Error: The current version of PowerShell is $($PSVersionTable.PSVersion.Major). Prior to running this artifact, ensure you have PowerShell $Version or higher installed."
+    }
+}
+
+# Run Checks
+$PSVersionRequired = 3
+try {
+    Ensure-PowerShell -Version $PSVersionRequired -ErrorAction stop
+    Ensure-Chocolatey -ChocoExePath 'C:\ProgramData\chocolatey\choco.exe' -ErrorAction stop
+}
+catch {
+    Write-Host "Error: Ensure PowerShell Version $($PSVersionRequired) and check if Chocolatey is installed."
+}
+
+
+# Check for PS module "AnyBox". If not installed, install.
+if (Get-Module -ListAvailable -Name Anybox) {
+    # Module exists
+} 
+else {
+    Install-Module -Name 'AnyBox'
+}
+
+# Import Anybox module
+# AnyBox reference: https://github.com/fresh2dev/AnyBox
+Import-Module AnyBox
+
+# Create Anybox window
+$anybox = New-Object AnyBox.AnyBox
+
+# Set Anybox Window properties
+$anybox.Title = 'EBERTLANG Monitoring Service - Programmauswahl'
+$anybox.ResizeMode = 'CanResizeWithGrip'
+$anybox.MinHeight = 300
+$anybox.MinWidth = 450
+$anybox.Topmost = $true
+$anybox.AccentColor = 'LightBlue'
+$anybox.Icon = 'Question'
+
+# List of applications passed via a ConnectWise Automate 
+$programs =  "7zip", "Skype", "CCleaner"
+
+# Create checkbox for every program in $programs with individual name
+$anybox.Prompts = @($programs) | ForEach-Object { New-AnyBoxPrompt -Group 'Auswahl:' -Message "$_" -Name "Input_$_" -InputType 'Checkbox'}
+
+# Create buttons
+$anybox.Buttons = @(
+    New-AnyBoxButton -Name 'install' -Text 'Installieren'
+    New-AnyBoxButton -Name 'cancel' -Text 'Abbrechen'
+)
+
+# Build and use response
+$response = $anybox | Show-AnyBox
+
+$appsToInstall = $response.GetEnumerator() | Where-Object { $_.Name -like 'Input_*' -and $_.Value -like 'True' }
+
+if ($response['install'] -eq $true) {
+    foreach ($app in $appsToInstall) {
+        $appsToInstallStr = "$($appsToInstallStr) $($app.Name.Substring(6))"
+        #Write-Host 'Install $($app.Name.Substring(6))'
+        #$timestamp = Get-Date -Format yyyy_MM_dd_HHmmss
+        #$logfile = "choco_$($app.Name.Substring(6))_$($timestamp).log"
+        #choco upgrade $app.Name.Substring(6) -y -log-File='C:\Windows\LTSVC\packages\Softwareauswahl\'$logfile
+    }
+}
+
+if ($appsToInstallStr.Length -eq 0)
+{
+    $appsToInstallStr = "<EMPTY>"
+}
+
+Write-Host $appsToInstallStr
